@@ -13,14 +13,14 @@ from config import get_base_path, get_settings
 from db import init_db, run_db_writer
 from downloader import run_downloader
 from harvester_base import AbstractBaseHarvester
-from zenodo_harvester import ZenodoHarvester
-from dryad_harvester import DryadHarvester
-from generic_dataverse_harvester import GenericDataverseHarvester
-from icpsr_harvester import ICPSRHarvester
-from odum_harvester import OdumHarvester
-from ihsn_harvester import IHSNHarvester
-from sada_harvester import SadaHarvester
-from cessda_harvester import CessdaHarvester
+from harvesters.zenodo_harvester import ZenodoHarvester
+from harvesters.dryad_harvester import DryadHarvester
+from harvesters.generic_dataverse_harvester import GenericDataverseHarvester
+from harvesters.icpsr_harvester import ICPSRHarvester
+from harvesters.odum_harvester import OdumHarvester
+from harvesters.ihsn_harvester import IHSNHarvester
+from harvesters.sada_harvester import SadaHarvester
+from harvesters.cessda_harvester import CessdaHarvester
 
 from constants import STRICT_TERMS, BROAD_TERMS
 
