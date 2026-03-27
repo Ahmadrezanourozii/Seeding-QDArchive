@@ -16,7 +16,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from config import get_settings
+from config import get_settings, get_db_path
 
 # Configure minimal logging for the dashboard
 logging.basicConfig(level=logging.ERROR)
@@ -27,8 +27,7 @@ def get_acquisition_stats() -> dict[str, Any] | str:
     """
     Queries the metadata database to generate a snapshot of acquisition telemetry.
     """
-    settings = get_settings()
-    db_path = Path(settings.db_path)
+    db_path = get_db_path()
 
     if not db_path.exists():
         return f"Database not found at: {db_path.absolute()}"

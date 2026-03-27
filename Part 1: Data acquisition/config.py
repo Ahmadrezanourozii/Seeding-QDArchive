@@ -82,7 +82,7 @@ class Settings:
         """Resolves the absolute path to the metadata database file."""
         if self.metadata_db_path:
             return Path(self.metadata_db_path)
-        return Path(__file__).parent / "metadata.sqlite"
+        return Path(__file__).parent / "database" / "metadata.sqlite"
 
 
 # Global settings singleton
