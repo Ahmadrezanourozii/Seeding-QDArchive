@@ -1,46 +1,69 @@
-# QDArchive: Qualitative Data Acquisition Pipeline
+# QDArchive: Part 1 - Data Acquisition Module
 
-A production-grade, asynchronous data harvesting pipeline designed to aggregate Qualitative Data Analysis (QDA) resources from major global research repositories. 
+This module represents the first milestone of the QDArchive project. It is responsible for the large-scale asynchronous harvesting, filtering, and acquisition of qualitative data from 14+ global research repositories.
 
-## Overview
-QDArchive implements a robust architecture for discovering, filtering, and acquiring social science research data. It specializes in identifying QDA-specific file formats (e.g., `.nvp`, `.hprx`, `.atlasti`) across diverse APIs and OAI-PMH endpoints.
+## 🏗 Architectural Design
+The module is built on a **Producer-Consumer / Async IO** architecture:
+1.  **Harvesters (Producers)**: Specialized Python modules that iterate through repository APIs (or scrape web interfaces) to discover projects.
+2.  **The QDA Firewall (Validator)**: A weighted keyword scoring engine that validates projects for qualitative relevance before they reach the queue.
+3.  **The Downloader (Consumer)**: A high-concurrency engine that acquires files and manages the relational database state.
+4.  **Telemetry Dashboard**: A real-time CLI interface that provides live health metrics of the pipeline.
 
-## Core Features
-- **Asynchronous Harvesting**: High-performance metadata extraction using `aiohttp` and `asyncio`.
-- **Intelligent Filtering**: Multi-tier QDA relevance scoring and automated metadata inspections.
-- **Heterogeneous Sources**: Unified interface for Zenodo, Dryad, Dataverse, ICPSR, IHSN, CESSDA, and more.
-- **Relational Persistence**: SQL-backed metadata storage with detailed acquisition telemetry.
+## 💎 Data Quality & Engineering Excellence
+We built several internal tools to ensure the resulting `metadata.sqlite` database is of senior-engineer quality:
+- **Deduplication Logic**: Aggregator overlaps (where a project appears in multiple archives) were purged using the `db_cleaner.py` "Data Surgeon," reducing vector database pollution.
+- **AI-Enhanced Metadata**: Missing language tags and descriptions were inferred using the `langdetect` library and content mirroring.
+- **Foreign Key Integrity**: Automated scripts mapped orphaned files and corrected virtual link types.
 
-## Raw Data Access
-Due to the large volume of harvested files, the raw datasets (Qualitative Data) are hosted externally:
-- **Google Drive**: [QDArchive Raw Data](https://drive.google.com/drive/folders/1oNg3-zzRhJhrN8E34G3Kxv2ZNv7VQ4dq?usp=sharing)
+---
 
-## Module Structure
+## 📖 Engineering Logs & Issues Resolved
+
+During the 270GB+ acquisition process, we encountered several critical bottlenecks. This log documents the architectural decisions made to resolve them:
+
+### 1. Security & Bot Prevention
+- **🛑 Rate Limits (Murray Archive)**: Rapid parallel requests resulted in `403 Forbidden` errors.
+  - **Decision**: Switched from granular keyword searching to **Wildcard Fetching** (`q=*`) and implemented **Request Throttling** (Sleep/Jitter) to masquerade as an academic research bot.
+- **🧱 Anti-Bot Firewalls (ADA Australia)**: Cloudflare-style JS challenges blocked direct API access.
+  - **Decision**: To maintain asynchronous performance, we moved these sources to the `FAILED: Pending whitelist` queue, preferring system stability over the complexity of heavy headless browser simulation.
+
+### 2. Database & File System Integrity
+- **👻 Ghost Folders**: We faced records with public metadata but restricted actual files.
+  - **Decision**: Developed a cleanup surgical script to purge directories that didn't have corresponding succeeded file records, ensuring a 1:1 match between the database and the 270GB local storage.
+- **🌍 The Virtual File Hack (CESSDA)**: European aggregators link to data without hosting it.
+  - **Decision**: Invented the **Virtual File Record** (`*.url`). Instead of breaking the database schema, we stored external links as "Succeeded Virtual Files," preserving the entire European metadata footprint for RAG indexing.
+
+### 3. Data Cleansing
+- **👯 Duplication Overlap**: One project from DANS appeared 61 times due to aggregator mirroring.
+  - **Decision**: Built the `db_cleaner.py` utility. It identifies duplicates and intelligently retains only the "Best Version" based on DOI presence and direct repository reliability.
+
+---
+
+## 📂 Implementation Details
 ```text
-.
-├── main.py                # Pipeline entry point & orchestration
-├── config.py              # Centralized configuration & environment management
-├── constants.py           # Domain-specific constants & QDA tier definitions
-├── database/              # Metadata storage
-│   └── metadata.sqlite    # SQLite database (Part 1 output)
-├── downloader.py          # Asynchronous file acquisition engine
-├── harvester_base.py      # Abstract interface for repository harvesters
-├── oai_common.py          # Shared utilities for OAI-PMH protocols
-├── dashboard.py           # Real-time CLI telemetry dashboard
-├── harvesters/            # Repository-specific implementations
+QDArchive_Code/Part 1: Data acquisition/
+├── main.py                # Orchestration & Pipeline entry
+├── config.py              # Environment & API management
+├── constants.py           # QDA Terminology & Tier weights
+├── database/              # Relational Storage
+│   └── metadata.sqlite    # The finalized 3,852 record database
+├── harvesters/            # Repository-specific harvesting logic
 │   ├── zenodo_harvester.py
 │   ├── dryad_harvester.py
 │   └── ...
-└── requirements.txt       # Project dependencies
+├── dashboard.py           # Real-time Telemetry CLI
+└── requirements.txt       # Python dependencies
 ```
 
-## Installation & Usage
-1. Clone the repository and navigate to this directory.
-2. Install dependencies: `pip install -r requirements.txt`
-3. Configure environment variables in `.env` (see `.env.example`).
-4. Run the pipeline: `python main.py`
+## 🛠 Usage
+```bash
+# Start the pipeline
+python main.py --all --strict --workers 10
 
-## Author
-**Ahmadreza Nourozi**  
-Master's Student in Artificial Intelligence  
-FAU Erlangen-Nuremberg
+# Monitor live telemetry
+python dashboard.py
+```
+
+---
+*Author: Ahmadreza Nourozi*  
+*FAU Erlangen-Nuremberg*
