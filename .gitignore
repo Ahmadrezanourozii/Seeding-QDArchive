@@ -1,0 +1,23 @@
+# Git Ignore for QDArchive Codebase
+
+# Virtual Environments
+venv/
+.venv/
+env/
+
+# Python Cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Configuration & Secrets
+.env
+
+# Large Data Files (Optional: keep if you want the database on GitHub)
+# metadata.sqlite
+# My_Downloads/
+
+# OS Metadata
+.DS_Store
+Thumbs.db
