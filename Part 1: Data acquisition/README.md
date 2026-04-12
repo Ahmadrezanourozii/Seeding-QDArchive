@@ -10,7 +10,7 @@ The module is built on a **Producer-Consumer / Async IO** architecture:
 4.  **Telemetry Dashboard**: A real-time CLI interface that provides live health metrics of the pipeline.
 
 ## 💎 Data Quality & Engineering Excellence
-We built several internal tools to ensure the resulting `metadata.sqlite` database is of senior-engineer quality:
+We built several internal tools to ensure the resulting `23726011-seeding.db` database is of senior-engineer quality:
 - **Deduplication Logic**: Aggregator overlaps (where a project appears in multiple archives) were purged using the `db_cleaner.py` "Data Surgeon," reducing vector database pollution.
 - **AI-Enhanced Metadata**: Missing language tags and descriptions were inferred using the `langdetect` library and content mirroring.
 - **Foreign Key Integrity**: Automated scripts mapped orphaned files and corrected virtual link types.
@@ -46,7 +46,7 @@ QDArchive_Code/Part 1: Data acquisition/
 ├── config.py              # Environment & API management
 ├── constants.py           # QDA Terminology & Tier weights
 ├── database/              # Relational Storage
-│   └── metadata.sqlite    # The finalized 3,852 record database
+│   └── 23726011-seeding.db    # The finalized 3,852 record database
 ├── harvesters/            # Repository-specific harvesting logic
 │   ├── zenodo_harvester.py
 │   ├── dryad_harvester.py
