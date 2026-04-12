@@ -45,8 +45,6 @@ QDArchive_Code/Part 1: Data acquisition/
 ├── main.py                # Orchestration & Pipeline entry
 ├── config.py              # Environment & API management
 ├── constants.py           # QDA Terminology & Tier weights
-├── database/              # Relational Storage
-│   └── 23726011-seeding.db    # The finalized 3,852 record database
 ├── harvesters/            # Repository-specific harvesting logic
 │   ├── zenodo_harvester.py
 │   ├── dryad_harvester.py

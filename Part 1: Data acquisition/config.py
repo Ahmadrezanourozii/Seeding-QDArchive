@@ -82,7 +82,8 @@ class Settings:
         """Resolves the absolute path to the metadata database file."""
         if self.metadata_db_path:
             return Path(self.metadata_db_path)
-        return Path(__file__).parent / "database" / "23726011-seeding.db"
+        # Database is now located in the root directory
+        return Path(__file__).parent.parent / "23726011-seeding.db"
 
 
 # Global settings singleton
