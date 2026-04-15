@@ -14,7 +14,6 @@ __pycache__/
 # Configuration & Secrets
 .env
 
-# Large Data Files (Optional: keep if you want the database on GitHub)
 # 23726011-seeding.db
 # My_Downloads/
 
