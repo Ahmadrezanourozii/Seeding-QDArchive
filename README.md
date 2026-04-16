@@ -26,7 +26,7 @@ For repositories with limited API surfaces (e.g., ICPSR or CESSDA), the pipeline
 | **Total Download Volume** | > 270 GB |
 | **Verified QDA Projects** | 3,852 |
 | **Successfully Harvested Files** | 20,470 |
-| **Database Quality** | Sanitized, De-duplicated, Enriched |
+| **Database Quality** | [Sanitized, De-duplicated, Enriched (View Report)](https://ahmadrezanourozii.github.io/Seeding-QDArchive/report/) |
 
 ### Source Distribution
 The pipeline integrates 14+ global research archives:
@@ -46,6 +46,7 @@ The core engine. Contains the harvester package, the asynchronous downloader, an
 Due to the massive volume (>270GB), the raw harvested files are stored in an external high-availability storage:
 - **Google Drive**: [QDArchive Raw Data](https://drive.google.com/drive/folders/1oNg3-zzRhJhrN8E34G3Kxv2ZNv7VQ4dq?usp=sharing)
 - **Database Viewer**: [View SQLite Database](https://beta.sqliteviewer.app/23726011-seeding.db/table/FILES)
+- **Quality Report**: [View Live Data Quality & Health Profiling](https://ahmadrezanourozii.github.io/Seeding-QDArchive/report/)
 
 ---
 
