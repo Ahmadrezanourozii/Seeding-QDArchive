@@ -1,23 +1,49 @@
 # Git Ignore for QDArchive Codebase
 
-# Virtual Environments
+# Virtual environments
 venv/
 .venv/
+.venv-*/
 env/
 
-# Python Cache
+# Python cache
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
 
-# Configuration & Secrets
+# Secrets
 .env
+.env.local
+*.env
+!.env.example
 
-# Large Data Files (Optional: keep if you want the database on GitHub)
-# 23726011-seeding.db
-# My_Downloads/
+# Local-only databases and merge artefacts
+*.db-shm
+*.db-wal
+*.premerge*.db
+23688981*.db
+23692652*.db
 
-# OS Metadata
+# Heavy local reference material (taxonomy CSV is versioned)
+*.pdf
+
+# Model caches
+.cache/
+models/
+~/.cache/huggingface/
+
+# OS and IDE
 .DS_Store
 Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Logs and temp
+*.log
+*.tmp
+
+# Optional: uncomment to exclude the canonical DB from GitHub
+# 23726011-seeding.db
