@@ -1,6 +1,6 @@
 """Author: Ahmadreza Nourozi | Master's Student in Artificial Intelligence, FAU Erlangen-Nuremberg
 
-Description: Zero-shot ISIC Rev.5 division classifier for QDA and QD projects using multilingual embeddings.
+Description: Zero-shot ISIC Rev.5 division classifier for QDA and QD archive metadata.
 """
 
 from __future__ import annotations
@@ -19,10 +19,13 @@ from sentence_transformers import SentenceTransformer
 
 PART_ROOT = Path(__file__).resolve().parent
 REPO_ROOT = PART_ROOT.parent
-DEFAULT_DB = REPO_ROOT / "23726011-seeding.db"
+DEFAULT_DB = REPO_ROOT / "23726011-sq26-classification.db"
+FALLBACK_DB = REPO_ROOT / "23726011-seeding.db"
 ISIC_CSV = PART_ROOT / "taxonomy" / "ISIC_Rev_5_english_structure.csv"
 REPORT_XLSX = PART_ROOT / "reports" / "isic_class_distribution_by_repository.xlsx"
 MODEL_NAME = "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
+EMBED_BATCH = 32
+MAX_SEQ_LEN = 384
 
 QDA_PRIMARY = frozenset({
     "pdf", "docx", "doc", "txt", "qdpx", "qdc", "qpd", "qlt", "ppj", "pprj",
@@ -34,8 +37,16 @@ QD_PRIMARY = frozenset({
 })
 
 
+def resolve_database_path(explicit: Path | None = None) -> Path:
+    if explicit is not None:
+        return explicit
+    env_path = os.environ.get("DATABASE_PATH")
+    if env_path:
+        return Path(env_path)
+    return DEFAULT_DB if DEFAULT_DB.is_file() else FALLBACK_DB
+
+
 def load_divisions(csv_path: Path) -> list[dict[str, str]]:
-    """Parse ISIC Rev.5 two-digit division codes with parent section metadata."""
     divisions: list[dict[str, str]] = []
     section_code = ""
     section_title = ""
@@ -61,9 +72,8 @@ def load_divisions(csv_path: Path) -> list[dict[str, str]]:
 
 def division_label(division: dict[str, str]) -> str:
     return (
-        f"ISIC Revision 5 economic activity, division {division['code']}: "
-        f"{division['title']}. Section {division['section_code']} "
-        f"{division['section_title']}."
+        f"ISIC Rev.5 division {division['code']}: {division['title']}. "
+        f"Section {division['section_code']}, {division['section_title']}."
     )
 
 
@@ -101,25 +111,22 @@ def build_project_text(
     file_types: str | None,
     project_type: str,
 ) -> str:
-    sections = [
-        f"Research archive type: {project_type}.",
-        f"Title: {title or ''}",
-    ]
+    lines = [f"Type: {project_type}.", f"Title: {title}"]
     if description:
-        sections.append(f"Abstract / description: {description[:3500]}")
+        lines.append(f"Description: {description[:3500]}")
     if language:
-        sections.append(f"Language: {language}")
+        lines.append(f"Language: {language}")
     if doi and not doi.lower().startswith("http"):
-        sections.append(f"DOI: {doi}")
+        lines.append(f"DOI: {doi}")
     if query_string:
-        sections.append(f"Topic / query context: {query_string[:800]}")
+        lines.append(f"Query: {query_string[:800]}")
     if keywords:
-        sections.append(f"Keywords: {keywords[:2000]}")
+        lines.append(f"Keywords: {keywords[:2000]}")
     if primary_files:
-        sections.append(f"Primary document and data file names: {primary_files[:4000]}")
+        lines.append(f"Files: {primary_files[:4000]}")
     if file_types:
-        sections.append(f"File format summary: {file_types[:500]}")
-    return "\n".join(sections)
+        lines.append(f"Formats: {file_types[:500]}")
+    return "\n".join(lines)
 
 
 def fetch_keywords(conn: sqlite3.Connection, project_ids: list[int]) -> dict[int, str]:
@@ -212,49 +219,108 @@ def write_excel_report(conn: sqlite3.Connection, output_path: Path) -> None:
         for project_type, sheet_name in (("QDA_PROJECT", "QDA_counts"), ("QD_PROJECT", "QD_counts")):
             subset = frame[frame["project_type"] == project_type]
             if subset.empty:
-                pd.DataFrame({"note": [f"No classified rows for {project_type}"]}).to_excel(
-                    writer, sheet_name=sheet_name, index=False
-                )
                 continue
-            pivot = subset.pivot_table(
+            subset.pivot_table(
                 index="repository_id",
                 columns="isic_division_title",
                 values="n_projects",
                 aggfunc="sum",
                 fill_value=0,
-            )
-            pivot.to_excel(writer, sheet_name=sheet_name)
+            ).to_excel(writer, sheet_name=sheet_name)
             subset.groupby(["repository_id", "repository_url"], as_index=False).agg(
                 projects_classified=("n_projects", "sum")
             ).to_excel(writer, sheet_name=f"{sheet_name}_repo_meta", index=False)
         frame.to_excel(writer, sheet_name="long_format_all", index=False)
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description="Assign ISIC Rev.5 classes to QDA/QD projects.")
-    parser.add_argument(
-        "--database",
-        type=Path,
-        default=Path(os.environ.get("DATABASE_PATH", DEFAULT_DB)),
+def classify_batch(
+    cursor: sqlite3.Cursor,
+    conn: sqlite3.Connection,
+    model: SentenceTransformer,
+    divisions: list[dict[str, str]],
+    label_embeddings: np.ndarray,
+    batch: list[dict],
+) -> None:
+    ids = [int(project["id"]) for project in batch]
+    keywords = fetch_keywords(conn, ids)
+    summaries: dict[int, tuple[str, str]] = {}
+    qda_ids = [int(project["id"]) for project in batch if project["type"] == "QDA_PROJECT"]
+    qd_ids = [int(project["id"]) for project in batch if project["type"] == "QD_PROJECT"]
+    if qda_ids:
+        summaries.update(fetch_file_summaries(conn, qda_ids, "QDA_PROJECT"))
+    if qd_ids:
+        summaries.update(fetch_file_summaries(conn, qd_ids, "QD_PROJECT"))
+
+    texts = []
+    for project in batch:
+        project_id = int(project["id"])
+        primary_files, file_types = summaries.get(project_id, ("", ""))
+        texts.append(
+            build_project_text(
+                title=project["title"] or "",
+                description=project.get("description"),
+                language=project.get("language"),
+                doi=project.get("doi"),
+                query_string=project.get("query_string"),
+                keywords=keywords.get(project_id, ""),
+                primary_files=primary_files,
+                file_types=file_types,
+                project_type=project["type"],
+            )
+        )
+
+    embeddings = model.encode(
+        texts,
+        batch_size=EMBED_BATCH,
+        show_progress_bar=False,
+        convert_to_numpy=True,
+        normalize_embeddings=True,
     )
-    parser.add_argument("--limit", type=int, default=0, help="Classify only the first N projects.")
+    similarities = embeddings @ label_embeddings.T
+    top_three = np.argsort(-similarities, axis=1)[:, :3]
+
+    for index, project in enumerate(batch):
+        best = int(top_three[index, 0])
+        division = divisions[best]
+        tags = " | ".join(divisions[int(rank)]["title"] for rank in top_three[index])
+        cursor.execute(
+            """
+            UPDATE "PROJECTS"
+            SET "class" = ?, isic_division_code = ?, isic_section_title = ?, class_tags = ?
+            WHERE id = ?
+            """,
+            (
+                division["title"],
+                division["code"],
+                f"{division['section_code']} — {division['section_title']}",
+                tags,
+                int(project["id"]),
+            ),
+        )
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Assign ISIC Rev.5 division labels to QDA/QD projects.")
+    parser.add_argument("--database", type=Path, default=None)
+    parser.add_argument("--limit", type=int, default=0)
     parser.add_argument("--batch-size", type=int, default=48)
     args = parser.parse_args()
 
+    database = resolve_database_path(args.database)
     if not ISIC_CSV.is_file():
         sys.stderr.write(f"Missing taxonomy file: {ISIC_CSV}\n")
         return 1
-    if not args.database.is_file():
-        sys.stderr.write(f"Database not found: {args.database}\n")
+    if not database.is_file():
+        sys.stderr.write(f"Database not found: {database}\n")
         return 1
 
     divisions = load_divisions(ISIC_CSV)
     if not divisions:
-        sys.stderr.write("No ISIC divisions parsed from taxonomy CSV.\n")
+        sys.stderr.write("No ISIC divisions found in taxonomy CSV.\n")
         return 1
 
     labels = [division_label(division) for division in divisions]
-    conn = sqlite3.connect(args.database)
+    conn = sqlite3.connect(database)
     conn.row_factory = sqlite3.Row
     ensure_schema(conn)
     conn.commit()
@@ -273,11 +339,11 @@ def main() -> int:
         projects = projects[: args.limit]
 
     model = SentenceTransformer(MODEL_NAME)
-    model.max_seq_length = min(model.max_seq_length, 384)
+    model.max_seq_length = min(model.max_seq_length, MAX_SEQ_LEN)
     label_embeddings = model.encode(
         labels,
-        batch_size=32,
-        show_progress_bar=True,
+        batch_size=EMBED_BATCH,
+        show_progress_bar=False,
         convert_to_numpy=True,
         normalize_embeddings=True,
     )
@@ -300,65 +366,15 @@ def main() -> int:
     )
     conn.commit()
 
-    batch_size = args.batch_size
-    for offset in range(0, len(projects), batch_size):
-        batch = projects[offset : offset + batch_size]
-        ids = [int(project["id"]) for project in batch]
-        keywords = fetch_keywords(conn, ids)
-        summaries: dict[int, tuple[str, str]] = {}
-        qda_ids = [int(project["id"]) for project in batch if project["type"] == "QDA_PROJECT"]
-        qd_ids = [int(project["id"]) for project in batch if project["type"] == "QD_PROJECT"]
-        if qda_ids:
-            summaries.update(fetch_file_summaries(conn, qda_ids, "QDA_PROJECT"))
-        if qd_ids:
-            summaries.update(fetch_file_summaries(conn, qd_ids, "QD_PROJECT"))
-
-        texts = []
-        for project in batch:
-            project_id = int(project["id"])
-            primary_files, file_types = summaries.get(project_id, ("", ""))
-            texts.append(
-                build_project_text(
-                    title=project["title"] or "",
-                    description=project.get("description"),
-                    language=project.get("language"),
-                    doi=project.get("doi"),
-                    query_string=project.get("query_string"),
-                    keywords=keywords.get(project_id, ""),
-                    primary_files=primary_files,
-                    file_types=file_types,
-                    project_type=project["type"],
-                )
-            )
-
-        embeddings = model.encode(
-            texts,
-            batch_size=min(batch_size, 32),
-            show_progress_bar=False,
-            convert_to_numpy=True,
-            normalize_embeddings=True,
+    for offset in range(0, len(projects), args.batch_size):
+        classify_batch(
+            cursor,
+            conn,
+            model,
+            divisions,
+            label_embeddings,
+            projects[offset : offset + args.batch_size],
         )
-        similarities = embeddings @ label_embeddings.T
-        top_three = np.argsort(-similarities, axis=1)[:, :3]
-
-        for index, project in enumerate(batch):
-            best = int(top_three[index, 0])
-            division = divisions[best]
-            tags = " | ".join(divisions[int(rank)]["title"] for rank in top_three[index])
-            cursor.execute(
-                """
-                UPDATE "PROJECTS"
-                SET "class" = ?, isic_division_code = ?, isic_section_title = ?, class_tags = ?
-                WHERE id = ?
-                """,
-                (
-                    division["title"],
-                    division["code"],
-                    f"{division['section_code']} — {division['section_title']}",
-                    tags,
-                    int(project["id"]),
-                ),
-            )
         conn.commit()
 
     cursor.execute(
@@ -375,7 +391,6 @@ def main() -> int:
     conn.commit()
     write_excel_report(conn, REPORT_XLSX)
     conn.close()
-    sys.stdout.write(f"Classification complete. Report written to {REPORT_XLSX}\n")
     return 0
 
 
