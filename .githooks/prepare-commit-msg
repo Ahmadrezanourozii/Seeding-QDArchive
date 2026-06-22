@@ -1,0 +1,3 @@
+#!/bin/sh
+# Strip Cursor co-author trailers before commits are recorded.
+sed -i '' '/cursoragent@cursor\.com/d' "$1" 2>/dev/null || sed -i '/cursoragent@cursor\.com/d' "$1"
